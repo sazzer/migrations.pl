@@ -26,17 +26,32 @@ sub apply
     my $migrations = shift;
     foreach my $mig(@{ $migrations })
     {
-        my $applied = $db->isMigrationApplied($mig);
+        my $migName = $mig->{name};
+        my $migSource = $mig->{source};
+        my $applied = $db->isMigrationApplied($migName);
         if ($applied)
         {
-            print "Migration $mig applied at $applied\n";
+            print "Migration $migName applied at $applied\n";
         }
         else
         {
-            print "Applying Migration $mig\n";
-            $db->markApplied($mig);
+            applyMigration($db, $migSource, "up");
+            print "Applying Migration $migName\n";
+            $db->markApplied($migName);
         }
     }
+}
+
+sub applyMigration
+{
+    my $db = shift;
+    my $source = shift;
+    my $dir = shift;
+
+    my $xs = XML::Simple->new(ForceArray => 1, ForceContent => 1);
+    my $ref = $xs->XMLin($source);
+    my $code = $ref->{$dir}->[0]->{content};
+    $db->execute($code);
 }
 
 sub parseConfig
@@ -52,7 +67,10 @@ sub parseConfig
     $config{migrations} = [];
     foreach my $mig(keys(%{ $ref->{list}->[0]->{migration} }))
     {
-        push(@{ $config{migrations} }, $mig);
+        my $migration = ();
+        $migration->{name} = $mig;
+        $migration->{source} = $ref->{list}->[0]->{migration}->{$mig}->{content};
+        push(@{ $config{migrations} }, $migration);
     }
     return %config;
 }
@@ -134,6 +152,15 @@ sub markApplied
     {
         $self->{APPLY}->execute($name);
     }
+}
+
+sub execute
+{
+    my $self = shift;
+    my $code = shift;
+    my $sth = $self->{DBH}->prepare($code);
+    $sth->execute;
+    $sth->finish;
 }
 
 
