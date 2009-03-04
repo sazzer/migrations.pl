@@ -4,6 +4,7 @@ use strict;
 use DBI;
 use Getopt::Long;
 use XML::Simple;
+use Data::Dumper;
 
 sub main
 {
@@ -16,7 +17,26 @@ sub main
     my $dbpass = $options{dbpass} || $conf{dbpass};
 
     my $db = Database->new($dburl, $dbuser, $dbpass);
-    print $db->details() . "\n";
+    apply($db, $conf{migrations});
+}
+
+sub apply
+{
+    my $db = shift;
+    my $migrations = shift;
+    foreach my $mig(@{ $migrations })
+    {
+        my $applied = $db->isMigrationApplied($mig);
+        if ($applied)
+        {
+            print "Migration $mig applied at $applied\n";
+        }
+        else
+        {
+            print "Applying Migration $mig\n";
+            $db->markApplied($mig);
+        }
+    }
 }
 
 sub parseConfig
@@ -29,6 +49,11 @@ sub parseConfig
     $config{dburl} = $ref->{database}->[0]->{url}->[0]->{content};
     $config{dbuser} = $ref->{database}->[0]->{username}->[0]->{content};
     $config{dbpass} = $ref->{database}->[0]->{password}->[0]->{content};
+    $config{migrations} = [];
+    foreach my $mig(keys(%{ $ref->{list}->[0]->{migration} }))
+    {
+        push(@{ $config{migrations} }, $mig);
+    }
     return %config;
 }
 sub options
@@ -79,9 +104,38 @@ sub new
         $sth->execute();
         $sth->finish;
     }
+
+    $self->{ISAPPLIED} = $self->{DBH}->prepare_cached('SELECT Applied FROM MigrationsApplied WHERE Migration = ?');
+    $self->{APPLY} = $self->{DBH}->prepare_cached('INSERT INTO MigrationsApplied(Migration, Applied) VALUES(?, CURRENT_TIMESTAMP)');
     bless($self, $class);
     return $self;
 }
+
+sub isMigrationApplied
+{
+    my $self = shift;
+    my $name = shift;
+    $self->{ISAPPLIED}->execute($name);
+    my $resultset = $self->{ISAPPLIED}->fetchrow_arrayref;
+    my $applied = undef;
+    if ($resultset)
+    {
+        $applied = $resultset->[0];
+    }
+    $self->{ISAPPLIED}->finish;
+    return $applied;
+}
+
+sub markApplied
+{
+    my $self = shift;
+    my $name = shift;
+    unless ($self->isMigrationApplied($name))
+    {
+        $self->{APPLY}->execute($name);
+    }
+}
+
 
 sub details
 {
