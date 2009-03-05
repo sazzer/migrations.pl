@@ -17,7 +17,11 @@ sub main
     my $dbpass = $options{dbpass} || $conf{dbpass};
 
     my $db = Database->new($dburl, $dbuser, $dbpass);
-    if ($options{action} eq "apply")
+    if ($options{help})
+    {
+        usage();
+    }
+    elsif ($options{action} eq "apply")
     {
         apply($db, $conf{migrations});
     }
@@ -27,9 +31,11 @@ sub main
     }
     elsif ($options{action} eq "revert")
     {
+        revert($db, $conf{migrations});
     }
     else
     {
+        usage();
     }
 }
 
@@ -45,6 +51,28 @@ sub list
         if ($applied)
         {
             print "Migration $migName applied at $applied\n";
+        }
+        else
+        {
+            print "Migration $migName is not applied\n";
+        }
+    }
+}
+
+sub revert
+{
+    my $db = shift;
+    my $migrations = shift;
+    foreach my $mig(reverse @{ $migrations })
+    {
+        my $migName = $mig->{name};
+        my $migSource = $mig->{source};
+        my $applied = $db->isMigrationApplied($migName);
+        if ($applied)
+        {
+            applyMigration($db, $migSource, "down");
+            print "Reverting Migration $migName\n";
+            $db->unmarkApplied($migName);
         }
         else
         {
@@ -84,7 +112,10 @@ sub applyMigration
     my $xs = XML::Simple->new(ForceArray => 1, ForceContent => 1);
     my $ref = $xs->XMLin($source);
     my $code = $ref->{$dir}->[0]->{content};
-    $db->execute($code);
+    if (defined($code) && $code =~ /\S/)
+    {
+        $db->execute($code);
+    }
 }
 
 sub parseConfig
@@ -159,6 +190,7 @@ sub new
 
     $self->{ISAPPLIED} = $self->{DBH}->prepare_cached('SELECT Applied FROM MigrationsApplied WHERE Migration = ?');
     $self->{APPLY} = $self->{DBH}->prepare_cached('INSERT INTO MigrationsApplied(Migration, Applied) VALUES(?, CURRENT_TIMESTAMP)');
+    $self->{UNAPPLY} = $self->{DBH}->prepare_cached('DELETE FROM MigrationsApplied WHERE Migration = ?');
     bless($self, $class);
     return $self;
 }
@@ -176,6 +208,16 @@ sub isMigrationApplied
     }
     $self->{ISAPPLIED}->finish;
     return $applied;
+}
+
+sub unmarkApplied
+{
+    my $self = shift;
+    my $name = shift;
+    if ($self->isMigrationApplied($name))
+    {
+        $self->{UNAPPLY}->execute($name);
+    }
 }
 
 sub markApplied
