@@ -11,13 +11,46 @@ sub main
     intro();
     my %options = options();
     my %conf = parseConfig($options{config});
-
+    
     my $dburl = $options{dburl} || $conf{dburl};
     my $dbuser = $options{dbuser} || $conf{dbuser};
     my $dbpass = $options{dbpass} || $conf{dbpass};
 
     my $db = Database->new($dburl, $dbuser, $dbpass);
-    apply($db, $conf{migrations});
+    if ($options{action} eq "apply")
+    {
+        apply($db, $conf{migrations});
+    }
+    elsif ($options{action} eq "list")
+    {
+        list($db, $conf{migrations});
+    }
+    elsif ($options{action} eq "revert")
+    {
+    }
+    else
+    {
+    }
+}
+
+sub list
+{
+    my $db = shift;
+    my $migrations = shift;
+    foreach my $mig(@{ $migrations })
+    {
+        my $migName = $mig->{name};
+        my $migSource = $mig->{source};
+        my $applied = $db->isMigrationApplied($migName);
+        if ($applied)
+        {
+            print "Migration $migName applied at $applied\n";
+        }
+        else
+        {
+            print "Migration $migName is not applied\n";
+        }
+    }
 }
 
 sub apply
@@ -81,8 +114,9 @@ sub options
     $h{dburl} = "";
     $h{dbuser} = "";
     $h{dbpass} = "";
+    $h{action} = "apply";
     Getopt::Long::Configure ("bundling");
-    GetOptions(\%h, 'help','dburl=s','dbuser=s','dbpass=s','config=s');
+    GetOptions(\%h, 'help','dburl=s','dbuser=s','dbpass=s','config=s','action=s');
     return %h;
 }
 
