@@ -23,7 +23,7 @@ sub main
     }
     elsif ($options{action} eq "apply")
     {
-        apply($db, $conf{migrations});
+        apply($db, $conf{migrations}, $options{step});
     }
     elsif ($options{action} eq "list")
     {
@@ -31,7 +31,7 @@ sub main
     }
     elsif ($options{action} eq "revert")
     {
-        revert($db, $conf{migrations});
+        revert($db, $conf{migrations}, $options{step});
     }
     else
     {
@@ -63,20 +63,28 @@ sub revert
 {
     my $db = shift;
     my $migrations = shift;
-    foreach my $mig(reverse @{ $migrations })
-    {
-        my $migName = $mig->{name};
-        my $migSource = $mig->{source};
-        my $applied = $db->isMigrationApplied($migName);
-        if ($applied)
+    my $step = shift;
+REVERT: {
+        foreach my $mig(reverse @{ $migrations })
         {
-            applyMigration($db, $migSource, "down");
-            print "Reverting Migration $migName\n";
-            $db->unmarkApplied($migName);
-        }
-        else
-        {
-            print "Migration $migName is not applied\n";
+            if ($step == 0)
+            {
+                last REVERT;
+            }
+            my $migName = $mig->{name};
+            my $migSource = $mig->{source};
+            my $applied = $db->isMigrationApplied($migName);
+            if ($applied)
+            {
+                applyMigration($db, $migSource, "down");
+                print "Reverting Migration $migName\n";
+                $db->unmarkApplied($migName);
+                $step--;
+            }
+            else
+            {
+                print "Migration $migName is not applied\n";
+            }
         }
     }
 }
@@ -85,20 +93,28 @@ sub apply
 {
     my $db = shift;
     my $migrations = shift;
-    foreach my $mig(@{ $migrations })
-    {
-        my $migName = $mig->{name};
-        my $migSource = $mig->{source};
-        my $applied = $db->isMigrationApplied($migName);
-        if ($applied)
+    my $step = shift;
+APPLY: {
+        foreach my $mig(@{ $migrations })
         {
-            print "Migration $migName applied at $applied\n";
-        }
-        else
-        {
-            applyMigration($db, $migSource, "up");
-            print "Applying Migration $migName\n";
-            $db->markApplied($migName);
+            if ($step == 0)
+            {
+                last APPLY;
+            }
+            my $migName = $mig->{name};
+            my $migSource = $mig->{source};
+            my $applied = $db->isMigrationApplied($migName);
+            if ($applied)
+            {
+                print "Migration $migName applied at $applied\n";
+                $step--;
+            }
+            else
+            {
+                applyMigration($db, $migSource, "up");
+                print "Applying Migration $migName\n";
+                $db->markApplied($migName);
+            }
         }
     }
 }
@@ -146,8 +162,9 @@ sub options
     $h{dbuser} = "";
     $h{dbpass} = "";
     $h{action} = "apply";
+    $h{step} = -1;
     Getopt::Long::Configure ("bundling");
-    GetOptions(\%h, 'help','dburl=s','dbuser=s','dbpass=s','config=s','action=s');
+    GetOptions(\%h, 'help','dburl=s','dbuser=s','dbpass=s','config=s','action=s', 'step=s');
     return %h;
 }
 
