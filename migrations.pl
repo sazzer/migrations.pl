@@ -129,7 +129,7 @@ sub parseConfig
     $config{dbuser} = $ref->{database}->[0]->{username}->[0]->{content};
     $config{dbpass} = $ref->{database}->[0]->{password}->[0]->{content};
     $config{migrations} = [];
-    foreach my $mig(keys(%{ $ref->{list}->[0]->{migration} }))
+    foreach my $mig(sort keys(%{ $ref->{list}->[0]->{migration} }))
     {
         my $migration = ();
         $migration->{name} = $mig;
